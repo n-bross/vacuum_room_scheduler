@@ -1,0 +1,90 @@
+{
+  "title": "Vacuum Room Scheduler",
+  "config": {
+    "abort": {
+      "already_configured": "This vacuum/presence combination is already configured."
+    },
+    "error": {
+      "invalid_tts_service": "Use the format domain.service, e.g. tts.google_translate_say.",
+      "no_rooms": "Add at least one room before finishing setup.",
+      "duplicate_room": "This room already exists in the list."
+    },
+    "step": {
+      "user": {
+        "title": "Base settings",
+        "description": "Configure entities, TTS and preferred cleaning window.",
+        "data": {
+          "vacuum_entity_id": "Vacuum entity",
+          "presence_entity_id": "Presence sensor",
+          "tts_service": "TTS service",
+          "media_player_entity_id": "Media player entity",
+          "max_days": "Max days without cleaning",
+          "window_start": "Preferred window start",
+          "window_end": "Preferred window end"
+        }
+      },
+      "rooms_menu": {
+        "title": "Rooms",
+        "description": "Current rooms: {rooms}",
+        "data": {
+          "action": "Action"
+        }
+      },
+      "room_add": {
+        "title": "Add room",
+        "data": {
+          "name": "Room name",
+          "segment_id": "Vacuum segment ID"
+        }
+      },
+      "room_remove": {
+        "title": "Remove room",
+        "data": {
+          "room_to_remove": "Room"
+        }
+      }
+    }
+  },
+  "options": {
+    "error": {
+      "invalid_tts_service": "Use the format domain.service, e.g. tts.google_translate_say.",
+      "no_rooms": "Add at least one room before saving.",
+      "duplicate_room": "This room already exists in the list."
+    },
+    "step": {
+      "user": {
+        "title": "Edit settings",
+        "description": "Update entities, thresholds, and cleaning window.",
+        "data": {
+          "vacuum_entity_id": "Vacuum entity",
+          "presence_entity_id": "Presence sensor",
+          "tts_service": "TTS service",
+          "media_player_entity_id": "Media player entity",
+          "max_days": "Max days without cleaning",
+          "window_start": "Preferred window start",
+          "window_end": "Preferred window end"
+        }
+      },
+      "rooms_menu": {
+        "title": "Rooms",
+        "description": "Current rooms: {rooms}",
+        "data": {
+          "action": "Action"
+        }
+      },
+      "room_add": {
+        "title": "Add room",
+        "data": {
+          "name": "Room name",
+          "segment_id": "Vacuum segment ID"
+        }
+      },
+      "room_remove": {
+        "title": "Remove room",
+        "data": {
+          "room_to_remove": "Room"
+        }
+      }
+    }
+  }
+}

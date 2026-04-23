@@ -1,0 +1,90 @@
+{
+  "title": "Vacuum Room Scheduler",
+  "config": {
+    "abort": {
+      "already_configured": "Diese Vakuum-/Anwesenheits-Kombination ist bereits eingerichtet."
+    },
+    "error": {
+      "invalid_tts_service": "Bitte das Format domain.service verwenden, z. B. tts.google_translate_say.",
+      "no_rooms": "Füge mindestens einen Raum hinzu, bevor du den Assistenten abschließt.",
+      "duplicate_room": "Dieser Raum ist bereits in der Liste vorhanden."
+    },
+    "step": {
+      "user": {
+        "title": "Grundeinstellungen",
+        "description": "Entitäten, TTS und bevorzugtes Zeitfenster konfigurieren.",
+        "data": {
+          "vacuum_entity_id": "Staubsauger-Entität",
+          "presence_entity_id": "Anwesenheitssensor",
+          "tts_service": "TTS-Service",
+          "media_player_entity_id": "Media-Player-Entität",
+          "max_days": "Maximale Tage ohne Reinigung",
+          "window_start": "Start des bevorzugten Zeitfensters",
+          "window_end": "Ende des bevorzugten Zeitfensters"
+        }
+      },
+      "rooms_menu": {
+        "title": "Räume",
+        "description": "Aktuelle Räume: {rooms}",
+        "data": {
+          "action": "Aktion"
+        }
+      },
+      "room_add": {
+        "title": "Raum hinzufügen",
+        "data": {
+          "name": "Raumname",
+          "segment_id": "Segment-ID des Staubsaugers"
+        }
+      },
+      "room_remove": {
+        "title": "Raum entfernen",
+        "data": {
+          "room_to_remove": "Raum"
+        }
+      }
+    }
+  },
+  "options": {
+    "error": {
+      "invalid_tts_service": "Bitte das Format domain.service verwenden, z. B. tts.google_translate_say.",
+      "no_rooms": "Füge mindestens einen Raum hinzu, bevor du speicherst.",
+      "duplicate_room": "Dieser Raum ist bereits in der Liste vorhanden."
+    },
+    "step": {
+      "user": {
+        "title": "Einstellungen bearbeiten",
+        "description": "Entitäten, Schwellenwerte und Zeitfenster aktualisieren.",
+        "data": {
+          "vacuum_entity_id": "Staubsauger-Entität",
+          "presence_entity_id": "Anwesenheitssensor",
+          "tts_service": "TTS-Service",
+          "media_player_entity_id": "Media-Player-Entität",
+          "max_days": "Maximale Tage ohne Reinigung",
+          "window_start": "Start des bevorzugten Zeitfensters",
+          "window_end": "Ende des bevorzugten Zeitfensters"
+        }
+      },
+      "rooms_menu": {
+        "title": "Räume",
+        "description": "Aktuelle Räume: {rooms}",
+        "data": {
+          "action": "Aktion"
+        }
+      },
+      "room_add": {
+        "title": "Raum hinzufügen",
+        "data": {
+          "name": "Raumname",
+          "segment_id": "Segment-ID des Staubsaugers"
+        }
+      },
+      "room_remove": {
+        "title": "Raum entfernen",
+        "data": {
+          "room_to_remove": "Raum"
+        }
+      }
+    }
+  }
+}

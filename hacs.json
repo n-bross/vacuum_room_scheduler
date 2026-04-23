@@ -1,0 +1,11 @@
+{
+  "name": "Vacuum Room Scheduler",
+  "category": "integration",
+  "content_in_root": false,
+  "domains": [
+    "vacuum_room_scheduler"
+  ],
+  "homeassistant": "2024.6.0",
+  "iot_class": "local_push",
+  "render_readme": true
+}

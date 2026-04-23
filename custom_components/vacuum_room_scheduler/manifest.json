@@ -1,0 +1,13 @@
+{
+  "domain": "vacuum_room_scheduler",
+  "name": "Vacuum Room Scheduler",
+  "version": "1.1.0",
+  "documentation": "https://github.com/nbross/vacuum_room_scheduler",
+  "issue_tracker": "https://github.com/nbross/vacuum_room_scheduler/issues",
+  "codeowners": [
+    "@nbross"
+  ],
+  "config_flow": true,
+  "iot_class": "local_push",
+  "integration_type": "service"
+}
