@@ -6,7 +6,7 @@
     },
     "error": {
       "invalid_tts_service": "Use the format domain.service, e.g. tts.google_translate_say.",
-      "no_rooms": "Add at least one room before finishing setup.",
+      "no_rooms": "Add at least one room or discover rooms from Home Assistant before finishing setup.",
       "duplicate_room": "This room already exists in the list."
     },
     "step": {
@@ -48,7 +48,7 @@
   "options": {
     "error": {
       "invalid_tts_service": "Use the format domain.service, e.g. tts.google_translate_say.",
-      "no_rooms": "Add at least one room before saving.",
+      "no_rooms": "Add at least one room or discover rooms from Home Assistant before saving.",
       "duplicate_room": "This room already exists in the list."
     },
     "step": {

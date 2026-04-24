@@ -54,6 +54,11 @@ from .const import (
     SERVICE_HANDLE_RESPONSE,
     STORAGE_VERSION,
 )
+from .room_discovery import (
+    discover_floor_area_names,
+    discover_rooms_on_same_floor,
+    filter_rooms_by_allowed_names,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -193,7 +198,10 @@ class VacuumRoomSchedulerManager:
             self.config.get(CONF_WINDOW_END), DEFAULT_WINDOW_END
         )
 
-        self.rooms: dict[str, int] = _normalize_rooms(self.config.get(CONF_ROOMS, []))
+        self._configured_rooms: dict[str, int] = _normalize_rooms(
+            self.config.get(CONF_ROOMS, [])
+        )
+        self.rooms: dict[str, int] = {}
 
         self.store = Store[dict[str, Any]](
             hass,
@@ -210,6 +218,7 @@ class VacuumRoomSchedulerManager:
 
     async def async_start(self) -> None:
         """Load state and start runtime listeners."""
+        self._refresh_rooms()
         await self._async_load_state()
 
         for task_key, when_str in list(self._scheduled.items()):
@@ -247,6 +256,47 @@ class VacuumRoomSchedulerManager:
         await self._async_periodic_check()
 
         _LOGGER.debug("Started Vacuum Room Scheduler for entry %s", self.entry.entry_id)
+
+    def _refresh_rooms(self) -> None:
+        """Build effective room set from config or HA discovery, filtered by floor."""
+        floor_room_names, anchor_area_name = discover_floor_area_names(
+            self.hass, self.vacuum_entity_id
+        )
+
+        if self._configured_rooms:
+            if floor_room_names:
+                self.rooms = filter_rooms_by_allowed_names(
+                    self._configured_rooms, floor_room_names
+                )
+            else:
+                self.rooms = dict(self._configured_rooms)
+
+            if not self.rooms:
+                _LOGGER.warning(
+                    "No configured rooms matched the vacuum floor for entry %s "
+                    "(vacuum area: %s).",
+                    self.entry.entry_id,
+                    anchor_area_name or "unknown",
+                )
+            return
+
+        discovered_rooms, _ = discover_rooms_on_same_floor(
+            self.hass, self.vacuum_entity_id
+        )
+        self.rooms = discovered_rooms
+
+        if self.rooms:
+            _LOGGER.info(
+                "Auto-discovered %s rooms for entry %s: %s",
+                len(self.rooms),
+                self.entry.entry_id,
+                ", ".join(sorted(self.rooms)),
+            )
+        else:
+            _LOGGER.warning(
+                "No rooms discovered from Home Assistant/vacuum for entry %s",
+                self.entry.entry_id,
+            )
 
     async def async_stop(self) -> None:
         """Stop runtime listeners and scheduled callbacks."""

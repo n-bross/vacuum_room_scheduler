@@ -1,7 +1,7 @@
 {
   "domain": "vacuum_room_scheduler",
   "name": "Vacuum Room Scheduler",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "documentation": "https://github.com/nbross/vacuum_room_scheduler",
   "issue_tracker": "https://github.com/nbross/vacuum_room_scheduler/issues",
   "codeowners": [

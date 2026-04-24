@@ -6,6 +6,7 @@ Home Assistant custom integration (`vacuum_room_scheduler`) that tracks room cle
 
 - Tracks last vacuumed and last mopped timestamps per room (persistent storage across restarts)
 - Uses room + segment mapping (e.g. Kitchen -> segment 16)
+- Can auto-discover rooms from Home Assistant and filter to the same floor as the vacuum
 - Checks a presence `binary_sensor` before any vacuum start
 - Automatically cleans overdue room tasks (vacuum/mop) only when nobody is home
 - If people are home and a task is overdue, sends a TTS prompt with response options
@@ -38,6 +39,7 @@ Home Assistant custom integration (`vacuum_room_scheduler`) that tracks room cle
    - Preferred window start/end (for example `09:00` to `17:00`)
 4. Add rooms dynamically in the flow:
    - `Add room` -> room name + segment ID
+   - `Discover rooms from Home Assistant` to import rooms on the same floor as the vacuum
    - `Remove room` if needed
    - `Finish setup`
 
@@ -77,6 +79,7 @@ event_data:
 
 - Speichert pro Raum getrennte Zeitpunkte für letztes Saugen und letztes Wischen (persistent über Neustarts)
 - Nutzt Raum-zu-Segment-Zuordnung (z. B. Küche -> Segment 16)
+- Kann Räume automatisch aus Home Assistant erkennen und auf den gleichen Stock wie den Staubsauger filtern
 - Prüft vor jedem Start einen Anwesenheits-`binary_sensor`
 - Reinigt überfällige Aufgaben (Saugen/Wischen) nur, wenn niemand zu Hause ist
 - Wenn jemand zu Hause ist und eine Aufgabe überfällig ist, erfolgt eine TTS-Nachfrage
@@ -109,6 +112,7 @@ event_data:
    - Bevorzugtes Zeitfenster Start/Ende (z. B. `09:00` bis `17:00`)
 4. Räume dynamisch im Assistenten verwalten:
    - `Raum hinzufügen` -> Raumname + Segment-ID
+   - `Räume aus Home Assistant erkennen` für Räume auf demselben Stock wie der Staubsauger
    - `Raum entfernen` bei Bedarf
    - `Einrichtung abschließen`
 

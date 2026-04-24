@@ -6,7 +6,7 @@
     },
     "error": {
       "invalid_tts_service": "Bitte das Format domain.service verwenden, z. B. tts.google_translate_say.",
-      "no_rooms": "Füge mindestens einen Raum hinzu, bevor du den Assistenten abschließt.",
+      "no_rooms": "Füge mindestens einen Raum hinzu oder nutze die Raum-Erkennung aus Home Assistant, bevor du den Assistenten abschließt.",
       "duplicate_room": "Dieser Raum ist bereits in der Liste vorhanden."
     },
     "step": {
@@ -48,7 +48,7 @@
   "options": {
     "error": {
       "invalid_tts_service": "Bitte das Format domain.service verwenden, z. B. tts.google_translate_say.",
-      "no_rooms": "Füge mindestens einen Raum hinzu, bevor du speicherst.",
+      "no_rooms": "Füge mindestens einen Raum hinzu oder nutze die Raum-Erkennung aus Home Assistant, bevor du speicherst.",
       "duplicate_room": "Dieser Raum ist bereits in der Liste vorhanden."
     },
     "step": {
