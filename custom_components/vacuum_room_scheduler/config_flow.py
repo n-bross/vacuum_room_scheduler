@@ -243,21 +243,25 @@ class VacuumRoomSchedulerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_room_discover(self, user_input: dict[str, Any] | None = None):
         """Discover rooms from Home Assistant and return to room menu."""
         del user_input
-        _LOGGER.info(
-            "Room discovery triggered in config flow for vacuum %s",
-            self._base_data.get(CONF_VACUUM_ENTITY_ID, "<unknown>"),
-        )
         discovered, message = _discover_rooms_for_vacuum(
             self.hass, self._base_data[CONF_VACUUM_ENTITY_ID]
         )
         if discovered:
             self._rooms = discovered
         self._discovery_message = message
-        _LOGGER.info(
-            "Room discovery result in config flow: %s room(s): %s",
-            len(discovered),
-            ", ".join(room[CONF_ROOM_NAME] for room in discovered) or "<none>",
-        )
+        if user_input is None:
+            return self.async_show_form(
+                step_id="room_discover",
+                data_schema=vol.Schema({}),
+                description_placeholders={
+                    "discovery_message": message,
+                    "rooms": ", ".join(
+                        f"{room[CONF_ROOM_NAME]} (segment {room[CONF_SEGMENT_ID]})"
+                        for room in discovered
+                    )
+                    or "No rooms discovered.",
+                },
+            )
         return await self.async_step_rooms_menu()
 
 
@@ -294,7 +298,7 @@ class VacuumRoomSchedulerOptionsFlow(config_entries.OptionsFlow):
             else:
                 self._base_data = user_input
                 if not self._rooms:
-                    self._rooms = _discover_rooms_for_vacuum(
+                    self._rooms, self._discovery_message = _discover_rooms_for_vacuum(
                         self.hass, self._base_data[CONF_VACUUM_ENTITY_ID]
                     )
                 return await self.async_step_rooms_menu()
@@ -456,21 +460,25 @@ class VacuumRoomSchedulerOptionsFlow(config_entries.OptionsFlow):
     async def async_step_room_discover(self, user_input: dict[str, Any] | None = None):
         """Discover rooms from Home Assistant and return to room menu."""
         del user_input
-        _LOGGER.info(
-            "Room discovery triggered in options flow for vacuum %s",
-            self._base_data.get(CONF_VACUUM_ENTITY_ID, "<unknown>"),
-        )
         discovered, message = _discover_rooms_for_vacuum(
             self.hass, self._base_data[CONF_VACUUM_ENTITY_ID]
         )
         if discovered:
             self._rooms = discovered
         self._discovery_message = message
-        _LOGGER.info(
-            "Room discovery result in options flow: %s room(s): %s",
-            len(discovered),
-            ", ".join(room[CONF_ROOM_NAME] for room in discovered) or "<none>",
-        )
+        if user_input is None:
+            return self.async_show_form(
+                step_id="room_discover",
+                data_schema=vol.Schema({}),
+                description_placeholders={
+                    "discovery_message": message,
+                    "rooms": ", ".join(
+                        f"{room[CONF_ROOM_NAME]} (segment {room[CONF_SEGMENT_ID]})"
+                        for room in discovered
+                    )
+                    or "No rooms discovered.",
+                },
+            )
         return await self.async_step_rooms_menu()
 
 

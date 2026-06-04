@@ -42,6 +42,10 @@
         "data": {
           "room_to_remove": "Raum"
         }
+      },
+      "room_discover": {
+        "title": "Räume erkennen",
+        "description": "{discovery_message}\nRäume: {rooms}"
       }
     }
   },
@@ -84,6 +88,10 @@
         "data": {
           "room_to_remove": "Raum"
         }
+      },
+      "room_discover": {
+        "title": "Räume erkennen",
+        "description": "{discovery_message}\nRäume: {rooms}"
       }
     }
   }
