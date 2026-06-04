@@ -40,6 +40,7 @@ Home Assistant custom integration (`vacuum_room_scheduler`) that tracks room cle
 4. Add rooms dynamically in the flow:
    - `Add room` -> room name + segment ID
    - `Discover rooms from Home Assistant` to import rooms on the same floor as the vacuum
+   - When rooms are discovered, map each vacuum room to the matching Home Assistant area once
    - `Remove room` if needed
    - `Finish setup`
 
@@ -113,6 +114,7 @@ event_data:
 4. Räume dynamisch im Assistenten verwalten:
    - `Raum hinzufügen` -> Raumname + Segment-ID
    - `Räume aus Home Assistant erkennen` für Räume auf demselben Stock wie der Staubsauger
+   - Danach jeden Staubsauger-Raum einmal dem passenden Home-Assistant-Bereich zuordnen
    - `Raum entfernen` bei Bedarf
    - `Einrichtung abschließen`
 

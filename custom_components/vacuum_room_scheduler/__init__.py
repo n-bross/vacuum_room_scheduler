@@ -33,6 +33,7 @@ from .const import (
     ATTR_ROOM,
     CHECK_INTERVAL_MINUTES,
     CONF_MAX_DAYS,
+    CONF_AREA_ID,
     CONF_MEDIA_PLAYER_ENTITY_ID,
     CONF_PRESENCE_ENTITY_ID,
     CONF_ROOM_NAME,
@@ -56,8 +57,8 @@ from .const import (
 )
 from .room_discovery import (
     discover_floor_area_names,
+    discover_floor_area_ids,
     discover_rooms_on_same_floor,
-    filter_rooms_by_allowed_names,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -201,6 +202,9 @@ class VacuumRoomSchedulerManager:
         self._configured_rooms: dict[str, int] = _normalize_rooms(
             self.config.get(CONF_ROOMS, [])
         )
+        self._configured_room_area_ids: dict[str, str] = _normalize_room_area_ids(
+            self.config.get(CONF_ROOMS, [])
+        )
         self.rooms: dict[str, int] = {}
 
         self.store = Store[dict[str, Any]](
@@ -262,12 +266,20 @@ class VacuumRoomSchedulerManager:
         floor_room_names, anchor_area_name = discover_floor_area_names(
             self.hass, self.vacuum_entity_id
         )
+        floor_area_ids, _ = discover_floor_area_ids(self.hass, self.vacuum_entity_id)
 
         if self._configured_rooms:
-            if floor_room_names:
-                self.rooms = filter_rooms_by_allowed_names(
-                    self._configured_rooms, floor_room_names
-                )
+            if floor_room_names or floor_area_ids:
+                self.rooms = {
+                    room_name: segment_id
+                    for room_name, segment_id in self._configured_rooms.items()
+                    if _room_is_on_vacuum_floor(
+                        room_name,
+                        self._configured_room_area_ids.get(room_name),
+                        floor_room_names,
+                        floor_area_ids,
+                    )
+                }
             else:
                 self.rooms = dict(self._configured_rooms)
 
@@ -835,6 +847,38 @@ def _normalize_rooms(raw_rooms: Any) -> dict[str, int]:
         rooms[name] = segment_id
 
     return rooms
+
+
+def _normalize_room_area_ids(raw_rooms: Any) -> dict[str, str]:
+    """Normalize room to area_id mapping from config data."""
+    room_area_ids: dict[str, str] = {}
+
+    if not isinstance(raw_rooms, list):
+        return room_area_ids
+
+    for entry in raw_rooms:
+        if not isinstance(entry, dict):
+            continue
+
+        name = str(entry.get(CONF_ROOM_NAME, "")).strip()
+        area_id = str(entry.get(CONF_AREA_ID, "")).strip()
+        if name and area_id:
+            room_area_ids[name] = area_id
+
+    return room_area_ids
+
+
+def _room_is_on_vacuum_floor(
+    room_name: str,
+    area_id: str | None,
+    floor_room_names: set[str],
+    floor_area_ids: set[str],
+) -> bool:
+    """Return True if a configured room belongs to the same floor as the vacuum."""
+    if area_id and area_id in floor_area_ids:
+        return True
+
+    return room_name in floor_room_names
 
 
 def _task_key(room: str, mode: str) -> str:

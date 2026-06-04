@@ -13,6 +13,7 @@ from homeassistant.helpers import selector
 import logging
 
 from .const import (
+    CONF_AREA_ID,
     CONF_MAX_DAYS,
     CONF_MEDIA_PLAYER_ENTITY_ID,
     CONF_PRESENCE_ENTITY_ID,
@@ -30,7 +31,9 @@ from .const import (
 )
 from .room_discovery import (
     discover_floor_area_names,
+    discover_floor_area_options,
     discover_vacuum_segment_map,
+    match_room_to_floor_area,
     filter_rooms_by_allowed_names,
 )
 
@@ -54,6 +57,9 @@ class VacuumRoomSchedulerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._base_data: dict[str, Any] = {}
         self._rooms: list[dict[str, Any]] = []
         self._discovery_message: str = ""
+        self._discovered_rooms: list[dict[str, Any]] = []
+        self._floor_area_options: dict[str, str] = {}
+        self._room_map_index: int = 0
 
     @staticmethod
     @callback
@@ -75,15 +81,20 @@ class VacuumRoomSchedulerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 rooms, message = _discover_rooms_for_vacuum(
                     self.hass, user_input[CONF_VACUUM_ENTITY_ID]
                 )
-                self._rooms = rooms
+                self._discovered_rooms = rooms
+                self._rooms = []
                 self._discovery_message = message
+                self._floor_area_options = discover_floor_area_options(
+                    self.hass, user_input[CONF_VACUUM_ENTITY_ID]
+                )
+                self._room_map_index = 0
                 unique_id = (
                     f"{user_input[CONF_VACUUM_ENTITY_ID]}"
                     f"::{user_input[CONF_PRESENCE_ENTITY_ID]}"
                 )
                 await self.async_set_unique_id(unique_id)
                 self._abort_if_unique_id_configured()
-                return await self.async_step_rooms_menu()
+                return await self.async_step_room_map()
 
         return self.async_show_form(
             step_id="user",
@@ -138,10 +149,7 @@ class VacuumRoomSchedulerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 ),
             )
 
-        existing_rooms = ", ".join(
-            f"{room[CONF_ROOM_NAME]} (segment {room[CONF_SEGMENT_ID]})"
-            for room in self._rooms
-        )
+        existing_rooms = ", ".join(_format_room_summary(room) for room in self._rooms)
 
         return self.async_show_form(
             step_id="rooms_menu",
@@ -226,10 +234,7 @@ class VacuumRoomSchedulerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                             options=[
                                 selector.SelectOptionDict(
                                     value=room[CONF_ROOM_NAME],
-                                    label=(
-                                        f"{room[CONF_ROOM_NAME]} "
-                                        f"(segment {room[CONF_SEGMENT_ID]})"
-                                    ),
+                                    label=_format_room_summary(room),
                                 )
                                 for room in self._rooms
                             ],
@@ -246,22 +251,81 @@ class VacuumRoomSchedulerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             discovered, message = _discover_rooms_for_vacuum(
                 self.hass, self._base_data[CONF_VACUUM_ENTITY_ID]
             )
-            if discovered:
-                self._rooms = discovered
+            self._discovered_rooms = discovered
+            self._rooms = []
             self._discovery_message = message
-            return self.async_show_form(
-                step_id="room_discover",
-                data_schema=vol.Schema({}),
-                description_placeholders={
-                    "discovery_message": message,
-                    "rooms": ", ".join(
-                        f"{room[CONF_ROOM_NAME]} (segment {room[CONF_SEGMENT_ID]})"
-                        for room in discovered
-                    )
-                    or "No rooms discovered.",
-                },
+            self._floor_area_options = discover_floor_area_options(
+                self.hass, self._base_data[CONF_VACUUM_ENTITY_ID]
             )
-        return await self.async_step_rooms_menu()
+            self._room_map_index = 0
+            return await self.async_step_room_map()
+        return await self.async_step_room_map()
+
+    async def async_step_room_map(self, user_input: dict[str, Any] | None = None):
+        """Map discovered vacuum rooms to Home Assistant areas."""
+        if not self._discovered_rooms:
+            return await self.async_step_rooms_menu()
+
+        if self._room_map_index >= len(self._discovered_rooms):
+            return await self.async_step_rooms_menu()
+
+        errors: dict[str, str] = {}
+        current_room = self._discovered_rooms[self._room_map_index]
+        current_room_name = current_room[CONF_ROOM_NAME]
+        default_area_id = match_room_to_floor_area(
+            self.hass, self._base_data[CONF_VACUUM_ENTITY_ID], current_room_name
+        )
+        area_options = [selector.SelectOptionDict(value="", label="Skip this room")]
+        area_options.extend(
+            selector.SelectOptionDict(value=area_id, label=label)
+            for area_id, label in self._floor_area_options.items()
+        )
+
+        if user_input is not None:
+            selected_area_id = user_input.get(current_room_name) or ""
+            duplicate = any(
+                room.get(CONF_AREA_ID) == selected_area_id and selected_area_id
+                for room in self._rooms
+            )
+            if duplicate:
+                errors["base"] = "duplicate_area_mapping"
+            else:
+                room_entry = {
+                    CONF_ROOM_NAME: current_room_name,
+                    CONF_SEGMENT_ID: current_room[CONF_SEGMENT_ID],
+                }
+                if selected_area_id:
+                    room_entry[CONF_AREA_ID] = selected_area_id
+                self._rooms.append(room_entry)
+                self._room_map_index += 1
+                if self._room_map_index >= len(self._discovered_rooms):
+                    return await self.async_step_rooms_menu()
+                return await self.async_step_room_map()
+
+        description = (
+            self._discovery_message
+            or "Map each vacuum room to the matching Home Assistant area."
+        )
+        return self.async_show_form(
+            step_id="room_map",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(current_room_name, default=default_area_id or ""): selector.SelectSelector(
+                        selector.SelectSelectorConfig(
+                            options=area_options,
+                            mode=selector.SelectSelectorMode.DROPDOWN,
+                        )
+                    )
+                }
+            ),
+            errors=errors,
+            description_placeholders={
+                "discovery_message": description,
+                "room": f"{current_room_name} (segment {current_room[CONF_SEGMENT_ID]})",
+                "room_index": str(self._room_map_index + 1),
+                "room_total": str(len(self._discovered_rooms)),
+            },
+        )
 
 
 class VacuumRoomSchedulerOptionsFlow(config_entries.OptionsFlow):
@@ -271,6 +335,9 @@ class VacuumRoomSchedulerOptionsFlow(config_entries.OptionsFlow):
         """Initialize options flow."""
         self._config_entry = config_entry
         self._discovery_message: str = ""
+        self._discovered_rooms: list[dict[str, Any]] = []
+        self._floor_area_options: dict[str, str] = {}
+        self._room_map_index: int = 0
         merged_data = {**config_entry.data, **config_entry.options}
         self._base_data = {
             CONF_VACUUM_ENTITY_ID: merged_data.get(CONF_VACUUM_ENTITY_ID, ""),
@@ -297,9 +364,14 @@ class VacuumRoomSchedulerOptionsFlow(config_entries.OptionsFlow):
             else:
                 self._base_data = user_input
                 if not self._rooms:
-                    self._rooms, self._discovery_message = _discover_rooms_for_vacuum(
+                    self._discovered_rooms, self._discovery_message = _discover_rooms_for_vacuum(
                         self.hass, self._base_data[CONF_VACUUM_ENTITY_ID]
                     )
+                    self._floor_area_options = discover_floor_area_options(
+                        self.hass, self._base_data[CONF_VACUUM_ENTITY_ID]
+                    )
+                    self._room_map_index = 0
+                    return await self.async_step_room_map()
                 return await self.async_step_rooms_menu()
 
         return self.async_show_form(
@@ -326,11 +398,15 @@ class VacuumRoomSchedulerOptionsFlow(config_entries.OptionsFlow):
                         self.hass, self._base_data[CONF_VACUUM_ENTITY_ID]
                     )
                     if discovered:
-                        self._rooms = discovered
+                        self._discovered_rooms = discovered
                         self._discovery_message = message
-                    else:
-                        self._discovery_message = message
-                        errors["base"] = "no_rooms"
+                        self._floor_area_options = discover_floor_area_options(
+                            self.hass, self._base_data[CONF_VACUUM_ENTITY_ID]
+                        )
+                        self._room_map_index = 0
+                        return await self.async_step_room_map()
+                    self._discovery_message = message
+                    errors["base"] = "no_rooms"
                 if self._rooms:
                     return self.async_create_entry(
                         title="",
@@ -354,10 +430,7 @@ class VacuumRoomSchedulerOptionsFlow(config_entries.OptionsFlow):
                 ),
             )
 
-        existing_rooms = ", ".join(
-            f"{room[CONF_ROOM_NAME]} (segment {room[CONF_SEGMENT_ID]})"
-            for room in self._rooms
-        )
+        existing_rooms = ", ".join(_format_room_summary(room) for room in self._rooms)
 
         return self.async_show_form(
             step_id="rooms_menu",
@@ -442,10 +515,7 @@ class VacuumRoomSchedulerOptionsFlow(config_entries.OptionsFlow):
                             options=[
                                 selector.SelectOptionDict(
                                     value=room[CONF_ROOM_NAME],
-                                    label=(
-                                        f"{room[CONF_ROOM_NAME]} "
-                                        f"(segment {room[CONF_SEGMENT_ID]})"
-                                    ),
+                                    label=_format_room_summary(room),
                                 )
                                 for room in self._rooms
                             ],
@@ -462,22 +532,81 @@ class VacuumRoomSchedulerOptionsFlow(config_entries.OptionsFlow):
             discovered, message = _discover_rooms_for_vacuum(
                 self.hass, self._base_data[CONF_VACUUM_ENTITY_ID]
             )
-            if discovered:
-                self._rooms = discovered
+            self._discovered_rooms = discovered
+            self._rooms = []
             self._discovery_message = message
-            return self.async_show_form(
-                step_id="room_discover",
-                data_schema=vol.Schema({}),
-                description_placeholders={
-                    "discovery_message": message,
-                    "rooms": ", ".join(
-                        f"{room[CONF_ROOM_NAME]} (segment {room[CONF_SEGMENT_ID]})"
-                        for room in discovered
-                    )
-                    or "No rooms discovered.",
-                },
+            self._floor_area_options = discover_floor_area_options(
+                self.hass, self._base_data[CONF_VACUUM_ENTITY_ID]
             )
-        return await self.async_step_rooms_menu()
+            self._room_map_index = 0
+            return await self.async_step_room_map()
+        return await self.async_step_room_map()
+
+    async def async_step_room_map(self, user_input: dict[str, Any] | None = None):
+        """Map discovered vacuum rooms to Home Assistant areas."""
+        if not self._discovered_rooms:
+            return await self.async_step_rooms_menu()
+
+        if self._room_map_index >= len(self._discovered_rooms):
+            return await self.async_step_rooms_menu()
+
+        errors: dict[str, str] = {}
+        current_room = self._discovered_rooms[self._room_map_index]
+        current_room_name = current_room[CONF_ROOM_NAME]
+        default_area_id = match_room_to_floor_area(
+            self.hass, self._base_data[CONF_VACUUM_ENTITY_ID], current_room_name
+        )
+        area_options = [selector.SelectOptionDict(value="", label="Skip this room")]
+        area_options.extend(
+            selector.SelectOptionDict(value=area_id, label=label)
+            for area_id, label in self._floor_area_options.items()
+        )
+
+        if user_input is not None:
+            selected_area_id = user_input.get(current_room_name) or ""
+            duplicate = any(
+                room.get(CONF_AREA_ID) == selected_area_id and selected_area_id
+                for room in self._rooms
+            )
+            if duplicate:
+                errors["base"] = "duplicate_area_mapping"
+            else:
+                room_entry = {
+                    CONF_ROOM_NAME: current_room_name,
+                    CONF_SEGMENT_ID: current_room[CONF_SEGMENT_ID],
+                }
+                if selected_area_id:
+                    room_entry[CONF_AREA_ID] = selected_area_id
+                self._rooms.append(room_entry)
+                self._room_map_index += 1
+                if self._room_map_index >= len(self._discovered_rooms):
+                    return await self.async_step_rooms_menu()
+                return await self.async_step_room_map()
+
+        description = (
+            self._discovery_message
+            or "Map each vacuum room to the matching Home Assistant area."
+        )
+        return self.async_show_form(
+            step_id="room_map",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(current_room_name, default=default_area_id or ""): selector.SelectSelector(
+                        selector.SelectSelectorConfig(
+                            options=area_options,
+                            mode=selector.SelectSelectorMode.DROPDOWN,
+                        )
+                    )
+                }
+            ),
+            errors=errors,
+            description_placeholders={
+                "discovery_message": description,
+                "room": f"{current_room_name} (segment {current_room[CONF_SEGMENT_ID]})",
+                "room_index": str(self._room_map_index + 1),
+                "room_total": str(len(self._discovered_rooms)),
+            },
+        )
 
 
 def _build_base_schema(defaults: dict[str, Any]) -> vol.Schema:
@@ -546,9 +675,27 @@ def _normalize_rooms(raw_rooms: Any) -> list[dict[str, Any]]:
             segment_id = int(segment)
         except (TypeError, ValueError):
             continue
-        rooms.append({CONF_ROOM_NAME: name, CONF_SEGMENT_ID: segment_id})
+        room_entry: dict[str, Any] = {
+            CONF_ROOM_NAME: name,
+            CONF_SEGMENT_ID: segment_id,
+        }
+        area_id = str(room.get(CONF_AREA_ID, "")).strip()
+        if area_id:
+            room_entry[CONF_AREA_ID] = area_id
+        rooms.append(room_entry)
 
     return rooms
+
+
+def _format_room_summary(room: dict[str, Any]) -> str:
+    """Build a human-readable room summary."""
+    room_name = str(room.get(CONF_ROOM_NAME, "")).strip() or "<unknown>"
+    segment_id = room.get(CONF_SEGMENT_ID, "?")
+    summary = f"{room_name} (segment {segment_id})"
+    area_id = str(room.get(CONF_AREA_ID, "")).strip()
+    if area_id:
+        summary += f" -> area {area_id}"
+    return summary
 
 
 def _is_valid_tts_service(value: str) -> bool:

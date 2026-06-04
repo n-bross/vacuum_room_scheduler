@@ -18,42 +18,65 @@ def discover_floor_area_names(
     hass: HomeAssistant, entity_id: str
 ) -> tuple[set[str], str | None]:
     """Return area names on the same floor as the given entity."""
-    area_id = _resolve_entity_area_id(hass, entity_id)
-    if area_id is None:
-        _LOGGER.debug("No area_id resolved for entity %s", entity_id)
-        return set(), None
-
-    area_reg = ar.async_get(hass)
-    area_entry = area_reg.async_get_area(area_id)
-    if area_entry is None:
-        _LOGGER.debug("No area entry resolved for area_id %s (entity %s)", area_id, entity_id)
-        return set(), None
-
-    floor_id = getattr(area_entry, "floor_id", None)
-    if not floor_id:
-        _LOGGER.debug(
-            "Area %s for entity %s has no floor_id", area_entry.name, entity_id
-        )
-        return set(), None
-
-    names: set[str] = set()
-    for candidate in area_reg.areas.values():
-        if getattr(candidate, "floor_id", None) != floor_id:
-            continue
-        names.add((candidate.name or "").strip())
-        for alias in getattr(candidate, "aliases", []) or []:
-            names.add(str(alias).strip())
-
-    names = {name for name in names if name}
+    area_entries, area_name = _discover_floor_area_entries(hass, entity_id)
+    names = _collect_area_names(area_entries)
 
     _LOGGER.debug(
         "Resolved floor areas for entity %s: area=%s floor_id=%s names=%s",
         entity_id,
-        area_entry.name,
-        floor_id,
+        area_name,
+        _floor_id_from_area_entries(area_entries),
         sorted(names),
     )
-    return names, area_entry.name
+    return names, area_name
+
+
+def discover_floor_area_ids(
+    hass: HomeAssistant, entity_id: str
+) -> tuple[set[str], str | None]:
+    """Return area ids on the same floor as the given entity."""
+    area_entries, area_name = _discover_floor_area_entries(hass, entity_id)
+    ids = {
+        str(getattr(candidate, "id", "")).strip()
+        for candidate in area_entries
+        if str(getattr(candidate, "id", "")).strip()
+    }
+    return ids, area_name
+
+
+def discover_floor_area_options(hass: HomeAssistant, entity_id: str) -> dict[str, str]:
+    """Return area-id -> display label for all areas on the same floor."""
+    area_entries, _ = _discover_floor_area_entries(hass, entity_id)
+    options: dict[str, str] = {}
+    for candidate in sorted(area_entries, key=lambda item: (item.name or "").casefold()):
+        area_id = str(getattr(candidate, "id", "")).strip()
+        if not area_id:
+            continue
+        label = (candidate.name or area_id).strip()
+        aliases = [
+            str(alias).strip()
+            for alias in getattr(candidate, "aliases", []) or []
+            if str(alias).strip()
+        ]
+        if aliases:
+            label = f"{label} ({', '.join(aliases[:2])})"
+        options[area_id] = label
+    return options
+
+
+def match_room_to_floor_area(hass: HomeAssistant, entity_id: str, room_name: str) -> str | None:
+    """Find the best matching area id for a vacuum room name."""
+    area_entries, _ = _discover_floor_area_entries(hass, entity_id)
+    normalized = _normalize_name(room_name)
+    for candidate in area_entries:
+        candidate_names = [
+            candidate.name,
+            *(getattr(candidate, "aliases", []) or []),
+        ]
+        for candidate_name in candidate_names:
+            if candidate_name and _normalize_name(str(candidate_name)) == normalized:
+                return str(getattr(candidate, "id", "")).strip() or None
+    return None
 
 
 def discover_vacuum_segment_map(hass: HomeAssistant, vacuum_entity_id: str) -> dict[str, int]:
@@ -169,6 +192,52 @@ def _resolve_entity_area_id(hass: HomeAssistant, entity_id: str) -> str | None:
         return None
 
     return device.area_id
+
+
+def _discover_floor_area_entries(
+    hass: HomeAssistant, entity_id: str
+) -> tuple[list[Any], str | None]:
+    area_id = _resolve_entity_area_id(hass, entity_id)
+    if area_id is None:
+        _LOGGER.debug("No area_id resolved for entity %s", entity_id)
+        return [], None
+
+    area_reg = ar.async_get(hass)
+    area_entry = area_reg.async_get_area(area_id)
+    if area_entry is None:
+        _LOGGER.debug("No area entry resolved for area_id %s (entity %s)", area_id, entity_id)
+        return [], None
+
+    floor_id = getattr(area_entry, "floor_id", None)
+    if not floor_id:
+        _LOGGER.debug(
+            "Area %s for entity %s has no floor_id", area_entry.name, entity_id
+        )
+        return [], area_entry.name
+
+    entries: list[Any] = [
+        candidate
+        for candidate in area_reg.areas.values()
+        if getattr(candidate, "floor_id", None) == floor_id
+    ]
+    return entries, area_entry.name
+
+
+def _collect_area_names(area_entries: list[Any]) -> set[str]:
+    names: set[str] = set()
+    for candidate in area_entries:
+        names.add((getattr(candidate, "name", "") or "").strip())
+        for alias in getattr(candidate, "aliases", []) or []:
+            names.add(str(alias).strip())
+    return {name for name in names if name}
+
+
+def _floor_id_from_area_entries(area_entries: list[Any]) -> str | None:
+    for candidate in area_entries:
+        floor_id = getattr(candidate, "floor_id", None)
+        if floor_id:
+            return str(floor_id)
+    return None
 
 
 def _coerce_room_mapping(raw_value: Any) -> dict[str, int]:
