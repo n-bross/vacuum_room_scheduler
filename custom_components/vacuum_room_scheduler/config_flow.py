@@ -242,14 +242,13 @@ class VacuumRoomSchedulerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def async_step_room_discover(self, user_input: dict[str, Any] | None = None):
         """Discover rooms from Home Assistant and return to room menu."""
-        del user_input
-        discovered, message = _discover_rooms_for_vacuum(
-            self.hass, self._base_data[CONF_VACUUM_ENTITY_ID]
-        )
-        if discovered:
-            self._rooms = discovered
-        self._discovery_message = message
         if user_input is None:
+            discovered, message = _discover_rooms_for_vacuum(
+                self.hass, self._base_data[CONF_VACUUM_ENTITY_ID]
+            )
+            if discovered:
+                self._rooms = discovered
+            self._discovery_message = message
             return self.async_show_form(
                 step_id="room_discover",
                 data_schema=vol.Schema({}),
@@ -459,14 +458,13 @@ class VacuumRoomSchedulerOptionsFlow(config_entries.OptionsFlow):
 
     async def async_step_room_discover(self, user_input: dict[str, Any] | None = None):
         """Discover rooms from Home Assistant and return to room menu."""
-        del user_input
-        discovered, message = _discover_rooms_for_vacuum(
-            self.hass, self._base_data[CONF_VACUUM_ENTITY_ID]
-        )
-        if discovered:
-            self._rooms = discovered
-        self._discovery_message = message
         if user_input is None:
+            discovered, message = _discover_rooms_for_vacuum(
+                self.hass, self._base_data[CONF_VACUUM_ENTITY_ID]
+            )
+            if discovered:
+                self._rooms = discovered
+            self._discovery_message = message
             return self.async_show_form(
                 step_id="room_discover",
                 data_schema=vol.Schema({}),
