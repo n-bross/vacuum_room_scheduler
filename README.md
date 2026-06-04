@@ -151,3 +151,24 @@ event_data:
 - Segment commands differ by vacuum model/integration. This integration tries `clean_segment` with common parameter formats and falls back to `vacuum.start`.
 - The scheduler tracks vacuuming and mopping separately. Start command execution still uses the configured vacuum integration command.
 - Preferred window applies to automatic and scheduled starts.
+
+## Debug Room Discovery
+
+If room discovery is unclear, run the standalone debug script against your Home Assistant config:
+
+```bash
+python3 scripts/discover_rooms_debug.py --ha-config /config --vacuum vacuum.your_robot
+```
+
+Optional:
+
+```bash
+python3 scripts/discover_rooms_debug.py --ha-config /config --vacuum vacuum.your_robot --state-file /path/to/exported_state.json
+```
+
+The script reads Home Assistant registry files and prints:
+
+- the vacuum area and floor
+- areas on the same floor
+- the discovered room-to-segment mapping
+- the final filtered room list
