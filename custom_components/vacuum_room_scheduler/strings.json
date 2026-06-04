@@ -25,7 +25,7 @@
       },
       "rooms_menu": {
         "title": "Rooms",
-        "description": "Current rooms: {rooms}",
+        "description": "Current rooms: {rooms}\n{discovery_message}",
         "data": {
           "action": "Action"
         }
@@ -67,7 +67,7 @@
       },
       "rooms_menu": {
         "title": "Rooms",
-        "description": "Current rooms: {rooms}",
+        "description": "Current rooms: {rooms}\n{discovery_message}",
         "data": {
           "action": "Action"
         }

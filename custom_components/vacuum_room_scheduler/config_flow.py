@@ -26,7 +26,11 @@ from .const import (
     DEFAULT_WINDOW_START,
     DOMAIN,
 )
-from .room_discovery import discover_rooms_on_same_floor
+from .room_discovery import (
+    discover_floor_area_names,
+    discover_vacuum_segment_map,
+    filter_rooms_by_allowed_names,
+)
 
 ACTION_ADD_ROOM = "add_room"
 ACTION_REMOVE_ROOM = "remove_room"
@@ -45,6 +49,7 @@ class VacuumRoomSchedulerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Initialize flow."""
         self._base_data: dict[str, Any] = {}
         self._rooms: list[dict[str, Any]] = []
+        self._discovery_message: str = ""
 
     @staticmethod
     @callback
@@ -63,9 +68,11 @@ class VacuumRoomSchedulerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 errors["base"] = "invalid_tts_service"
             else:
                 self._base_data = user_input
-                self._rooms = _discover_rooms_for_vacuum(
+                rooms, message = _discover_rooms_for_vacuum(
                     self.hass, user_input[CONF_VACUUM_ENTITY_ID]
                 )
+                self._rooms = rooms
+                self._discovery_message = message
                 unique_id = (
                     f"{user_input[CONF_VACUUM_ENTITY_ID]}"
                     f"::{user_input[CONF_PRESENCE_ENTITY_ID]}"
@@ -94,12 +101,14 @@ class VacuumRoomSchedulerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 return await self.async_step_room_discover()
             if action == ACTION_DONE:
                 if not self._rooms:
-                    discovered = _discover_rooms_for_vacuum(
+                    discovered, message = _discover_rooms_for_vacuum(
                         self.hass, self._base_data[CONF_VACUUM_ENTITY_ID]
                     )
                     if discovered:
                         self._rooms = discovered
+                        self._discovery_message = message
                     else:
+                        self._discovery_message = message
                         errors["base"] = "no_rooms"
                 if self._rooms:
                     return self.async_create_entry(
@@ -145,6 +154,7 @@ class VacuumRoomSchedulerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             errors=errors,
             description_placeholders={
                 "rooms": existing_rooms or "No rooms configured yet.",
+                "discovery_message": self._discovery_message or "",
             },
         )
 
@@ -229,9 +239,12 @@ class VacuumRoomSchedulerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_room_discover(self, user_input: dict[str, Any] | None = None):
         """Discover rooms from Home Assistant and return to room menu."""
         del user_input
-        self._rooms = _discover_rooms_for_vacuum(
+        discovered, message = _discover_rooms_for_vacuum(
             self.hass, self._base_data[CONF_VACUUM_ENTITY_ID]
         )
+        if discovered:
+            self._rooms = discovered
+        self._discovery_message = message
         return await self.async_step_rooms_menu()
 
 
@@ -241,6 +254,7 @@ class VacuumRoomSchedulerOptionsFlow(config_entries.OptionsFlow):
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
         """Initialize options flow."""
         self._config_entry = config_entry
+        self._discovery_message: str = ""
         merged_data = {**config_entry.data, **config_entry.options}
         self._base_data = {
             CONF_VACUUM_ENTITY_ID: merged_data.get(CONF_VACUUM_ENTITY_ID, ""),
@@ -292,12 +306,14 @@ class VacuumRoomSchedulerOptionsFlow(config_entries.OptionsFlow):
                 return await self.async_step_room_discover()
             if action == ACTION_DONE:
                 if not self._rooms:
-                    discovered = _discover_rooms_for_vacuum(
+                    discovered, message = _discover_rooms_for_vacuum(
                         self.hass, self._base_data[CONF_VACUUM_ENTITY_ID]
                     )
                     if discovered:
                         self._rooms = discovered
+                        self._discovery_message = message
                     else:
+                        self._discovery_message = message
                         errors["base"] = "no_rooms"
                 if self._rooms:
                     return self.async_create_entry(
@@ -342,6 +358,7 @@ class VacuumRoomSchedulerOptionsFlow(config_entries.OptionsFlow):
             errors=errors,
             description_placeholders={
                 "rooms": existing_rooms or "No rooms configured yet.",
+                "discovery_message": self._discovery_message or "",
             },
         )
 
@@ -426,9 +443,12 @@ class VacuumRoomSchedulerOptionsFlow(config_entries.OptionsFlow):
     async def async_step_room_discover(self, user_input: dict[str, Any] | None = None):
         """Discover rooms from Home Assistant and return to room menu."""
         del user_input
-        self._rooms = _discover_rooms_for_vacuum(
+        discovered, message = _discover_rooms_for_vacuum(
             self.hass, self._base_data[CONF_VACUUM_ENTITY_ID]
         )
+        if discovered:
+            self._rooms = discovered
+        self._discovery_message = message
         return await self.async_step_rooms_menu()
 
 
@@ -513,10 +533,53 @@ def _is_valid_tts_service(value: str) -> bool:
 
 def _discover_rooms_for_vacuum(
     hass: HomeAssistant, vacuum_entity_id: str
-) -> list[dict[str, Any]]:
-    """Discover room mapping from HA and filter to same floor as the vacuum."""
-    discovered_rooms, _ = discover_rooms_on_same_floor(hass, vacuum_entity_id)
-    return [
+) -> tuple[list[dict[str, Any]], str]:
+    """Discover room mapping from HA and return a human-readable status."""
+    discovered_rooms = discover_vacuum_segment_map(hass, vacuum_entity_id)
+    allowed_names, anchor_area_name = discover_floor_area_names(hass, vacuum_entity_id)
+
+    if allowed_names:
+        filtered_rooms = filter_rooms_by_allowed_names(discovered_rooms, allowed_names)
+    else:
+        filtered_rooms = discovered_rooms
+
+    rooms = [
         {CONF_ROOM_NAME: room_name, CONF_SEGMENT_ID: segment_id}
-        for room_name, segment_id in sorted(discovered_rooms.items())
+        for room_name, segment_id in sorted(filtered_rooms.items())
     ]
+
+    if rooms:
+        names = ", ".join(room[CONF_ROOM_NAME] for room in rooms)
+        if allowed_names:
+            status = (
+                f"Imported {len(rooms)} room(s) from the same floor as "
+                f"{anchor_area_name or 'the vacuum'}: {names}."
+            )
+        else:
+            status = (
+                f"Imported {len(rooms)} room(s) from the vacuum mapping: {names}."
+            )
+    elif discovered_rooms and allowed_names:
+        allowed_list = ", ".join(sorted(allowed_names))
+        status = (
+            "I found vacuum segments, but none matched the rooms on the same floor. "
+            f"Same-floor areas are: {allowed_list}."
+        )
+    elif discovered_rooms:
+        status = (
+            "I found vacuum segments, but could not match them to Home Assistant "
+            "areas."
+        )
+    elif allowed_names:
+        allowed_list = ", ".join(sorted(allowed_names))
+        status = (
+            "I found areas on the same floor, but the vacuum integration did not "
+            f"expose any room segments. Same-floor areas are: {allowed_list}."
+        )
+    else:
+        status = (
+            "I could not discover any rooms. Make sure the vacuum entity exposes "
+            "segment mappings and that the vacuum is assigned to an area."
+        )
+
+    return rooms, status
