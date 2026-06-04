@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+import logging
 from typing import Any
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import area_registry as ar
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
+
+_LOGGER = logging.getLogger(__name__)
 
 
 def discover_floor_area_names(
@@ -17,15 +20,20 @@ def discover_floor_area_names(
     """Return area names on the same floor as the given entity."""
     area_id = _resolve_entity_area_id(hass, entity_id)
     if area_id is None:
+        _LOGGER.debug("No area_id resolved for entity %s", entity_id)
         return set(), None
 
     area_reg = ar.async_get(hass)
     area_entry = area_reg.async_get_area(area_id)
     if area_entry is None:
+        _LOGGER.debug("No area entry resolved for area_id %s (entity %s)", area_id, entity_id)
         return set(), None
 
     floor_id = getattr(area_entry, "floor_id", None)
     if not floor_id:
+        _LOGGER.debug(
+            "Area %s for entity %s has no floor_id", area_entry.name, entity_id
+        )
         return set(), None
 
     names: set[str] = set()
@@ -36,6 +44,13 @@ def discover_floor_area_names(
         if name:
             names.add(name)
 
+    _LOGGER.debug(
+        "Resolved floor areas for entity %s: area=%s floor_id=%s names=%s",
+        entity_id,
+        area_entry.name,
+        floor_id,
+        sorted(names),
+    )
     return names, area_entry.name
 
 
@@ -43,6 +58,7 @@ def discover_vacuum_segment_map(hass: HomeAssistant, vacuum_entity_id: str) -> d
     """Try to discover room-name to segment-id mapping from vacuum state attributes."""
     state = hass.states.get(vacuum_entity_id)
     if state is None:
+        _LOGGER.debug("No state found for vacuum entity %s", vacuum_entity_id)
         return {}
 
     attrs = dict(state.attributes)
@@ -59,13 +75,25 @@ def discover_vacuum_segment_map(hass: HomeAssistant, vacuum_entity_id: str) -> d
             continue
         mapping = _coerce_room_mapping(attrs[key])
         if mapping:
+            _LOGGER.debug(
+                "Discovered room mapping for %s from attribute %s: %s",
+                vacuum_entity_id,
+                key,
+                mapping,
+            )
             return mapping
 
     for value in attrs.values():
         mapping = _coerce_room_mapping(value)
         if mapping:
+            _LOGGER.debug(
+                "Discovered room mapping for %s from fallback attribute scan: %s",
+                vacuum_entity_id,
+                mapping,
+            )
             return mapping
 
+    _LOGGER.debug("No room mapping discovered for vacuum entity %s", vacuum_entity_id)
     return {}
 
 
@@ -74,6 +102,7 @@ def filter_rooms_by_allowed_names(
 ) -> dict[str, int]:
     """Filter room mapping by case-insensitive allowed room names."""
     if not allowed_names:
+        _LOGGER.debug("No allowed names provided, returning %s rooms unchanged", len(rooms))
         return dict(rooms)
 
     allowed_lookup = {_normalize_name(name) for name in allowed_names if name}
@@ -90,13 +119,25 @@ def discover_rooms_on_same_floor(
     """Discover vacuum rooms and keep only rooms on same floor as the vacuum."""
     discovered = discover_vacuum_segment_map(hass, vacuum_entity_id)
     if not discovered:
+        _LOGGER.debug("No rooms discovered at all for %s", vacuum_entity_id)
         return {}, None
 
     allowed_names, anchor_area_name = discover_floor_area_names(hass, vacuum_entity_id)
     if not allowed_names:
+        _LOGGER.debug(
+            "Returning unfiltered rooms for %s because no floor filter was available",
+            vacuum_entity_id,
+        )
         return discovered, anchor_area_name
 
-    return filter_rooms_by_allowed_names(discovered, allowed_names), anchor_area_name
+    filtered = filter_rooms_by_allowed_names(discovered, allowed_names)
+    _LOGGER.debug(
+        "Filtered rooms for %s using allowed names %s -> %s",
+        vacuum_entity_id,
+        sorted(allowed_names),
+        filtered,
+    )
+    return filtered, anchor_area_name
 
 
 def _resolve_entity_area_id(hass: HomeAssistant, entity_id: str) -> str | None:

@@ -10,6 +10,8 @@ from homeassistant import config_entries
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import selector
 
+import logging
+
 from .const import (
     CONF_MAX_DAYS,
     CONF_MEDIA_PLAYER_ENTITY_ID,
@@ -31,6 +33,8 @@ from .room_discovery import (
     discover_vacuum_segment_map,
     filter_rooms_by_allowed_names,
 )
+
+_LOGGER = logging.getLogger(__name__)
 
 ACTION_ADD_ROOM = "add_room"
 ACTION_REMOVE_ROOM = "remove_room"
@@ -239,12 +243,21 @@ class VacuumRoomSchedulerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_room_discover(self, user_input: dict[str, Any] | None = None):
         """Discover rooms from Home Assistant and return to room menu."""
         del user_input
+        _LOGGER.info(
+            "Room discovery triggered in config flow for vacuum %s",
+            self._base_data.get(CONF_VACUUM_ENTITY_ID, "<unknown>"),
+        )
         discovered, message = _discover_rooms_for_vacuum(
             self.hass, self._base_data[CONF_VACUUM_ENTITY_ID]
         )
         if discovered:
             self._rooms = discovered
         self._discovery_message = message
+        _LOGGER.info(
+            "Room discovery result in config flow: %s room(s): %s",
+            len(discovered),
+            ", ".join(room[CONF_ROOM_NAME] for room in discovered) or "<none>",
+        )
         return await self.async_step_rooms_menu()
 
 
@@ -443,12 +456,21 @@ class VacuumRoomSchedulerOptionsFlow(config_entries.OptionsFlow):
     async def async_step_room_discover(self, user_input: dict[str, Any] | None = None):
         """Discover rooms from Home Assistant and return to room menu."""
         del user_input
+        _LOGGER.info(
+            "Room discovery triggered in options flow for vacuum %s",
+            self._base_data.get(CONF_VACUUM_ENTITY_ID, "<unknown>"),
+        )
         discovered, message = _discover_rooms_for_vacuum(
             self.hass, self._base_data[CONF_VACUUM_ENTITY_ID]
         )
         if discovered:
             self._rooms = discovered
         self._discovery_message = message
+        _LOGGER.info(
+            "Room discovery result in options flow: %s room(s): %s",
+            len(discovered),
+            ", ".join(room[CONF_ROOM_NAME] for room in discovered) or "<none>",
+        )
         return await self.async_step_rooms_menu()
 
 
@@ -538,10 +560,24 @@ def _discover_rooms_for_vacuum(
     discovered_rooms = discover_vacuum_segment_map(hass, vacuum_entity_id)
     allowed_names, anchor_area_name = discover_floor_area_names(hass, vacuum_entity_id)
 
+    _LOGGER.debug(
+        "Discovery raw data for %s: segments=%s allowed_names=%s anchor_area=%s",
+        vacuum_entity_id,
+        discovered_rooms,
+        sorted(allowed_names) if allowed_names else [],
+        anchor_area_name,
+    )
+
     if allowed_names:
         filtered_rooms = filter_rooms_by_allowed_names(discovered_rooms, allowed_names)
     else:
         filtered_rooms = discovered_rooms
+
+    _LOGGER.debug(
+        "Discovery filtered data for %s: filtered=%s",
+        vacuum_entity_id,
+        filtered_rooms,
+    )
 
     rooms = [
         {CONF_ROOM_NAME: room_name, CONF_SEGMENT_ID: segment_id}
@@ -581,5 +617,7 @@ def _discover_rooms_for_vacuum(
             "I could not discover any rooms. Make sure the vacuum entity exposes "
             "segment mappings and that the vacuum is assigned to an area."
         )
+
+    _LOGGER.debug("Discovery status for %s: %s", vacuum_entity_id, status)
 
     return rooms, status
