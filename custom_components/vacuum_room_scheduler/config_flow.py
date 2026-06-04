@@ -574,25 +574,34 @@ def _discover_rooms_for_vacuum(
         anchor_area_name,
     )
 
-    if allowed_names:
-        filtered_rooms = filter_rooms_by_allowed_names(discovered_rooms, allowed_names)
-    else:
-        filtered_rooms = discovered_rooms
+    filtered_rooms = (
+        filter_rooms_by_allowed_names(discovered_rooms, allowed_names)
+        if allowed_names
+        else discovered_rooms
+    )
+    fallback_to_discovered = bool(discovered_rooms and allowed_names and not filtered_rooms)
+    rooms_to_use = discovered_rooms if fallback_to_discovered else filtered_rooms
 
     _LOGGER.debug(
-        "Discovery filtered data for %s: filtered=%s",
+        "Discovery filtered data for %s: filtered=%s fallback=%s",
         vacuum_entity_id,
         filtered_rooms,
+        fallback_to_discovered,
     )
 
     rooms = [
         {CONF_ROOM_NAME: room_name, CONF_SEGMENT_ID: segment_id}
-        for room_name, segment_id in sorted(filtered_rooms.items())
+        for room_name, segment_id in sorted(rooms_to_use.items())
     ]
 
     if rooms:
         names = ", ".join(room[CONF_ROOM_NAME] for room in rooms)
-        if allowed_names:
+        if fallback_to_discovered:
+            status = (
+                "I found vacuum segments, but none matched the rooms on the same "
+                f"floor. Keeping the discovered rooms for now: {names}."
+            )
+        elif allowed_names:
             status = (
                 f"Imported {len(rooms)} room(s) from the same floor as "
                 f"{anchor_area_name or 'the vacuum'}: {names}."

@@ -40,9 +40,11 @@ def discover_floor_area_names(
     for candidate in area_reg.areas.values():
         if getattr(candidate, "floor_id", None) != floor_id:
             continue
-        name = (candidate.name or "").strip()
-        if name:
-            names.add(name)
+        names.add((candidate.name or "").strip())
+        for alias in getattr(candidate, "aliases", []) or []:
+            names.add(str(alias).strip())
+
+    names = {name for name in names if name}
 
     _LOGGER.debug(
         "Resolved floor areas for entity %s: area=%s floor_id=%s names=%s",
@@ -131,6 +133,14 @@ def discover_rooms_on_same_floor(
         return discovered, anchor_area_name
 
     filtered = filter_rooms_by_allowed_names(discovered, allowed_names)
+    if not filtered:
+        _LOGGER.warning(
+            "No discovered room names matched the HA floor areas for %s. "
+            "Returning discovered rooms unchanged.",
+            vacuum_entity_id,
+        )
+        return discovered, anchor_area_name
+
     _LOGGER.debug(
         "Filtered rooms for %s using allowed names %s -> %s",
         vacuum_entity_id,
@@ -163,17 +173,67 @@ def _resolve_entity_area_id(hass: HomeAssistant, entity_id: str) -> str | None:
 
 def _coerce_room_mapping(raw_value: Any) -> dict[str, int]:
     """Convert different room-mapping shapes to room-name->segment-id."""
+    mapping: dict[str, int] = {}
+    _collect_room_mapping(raw_value, mapping)
+    return mapping
+
+
+def _collect_room_mapping(raw_value: Any, mapping: dict[str, int], depth: int = 0) -> None:
+    """Recursively scan nested values for room mappings."""
+    if depth > 5 or not raw_value:
+        return
+
     if isinstance(raw_value, Mapping):
-        mapping = _mapping_from_dict(raw_value)
-        if mapping:
-            return mapping
+        pair = _pair_from_item(raw_value)
+        if pair is not None:
+            room_name, segment_id = pair
+            mapping[room_name] = segment_id
+            return
+
+        if _is_mapping_candidate(raw_value):
+            mapping.update(_mapping_from_dict(raw_value))
+        for value in raw_value.values():
+            _collect_room_mapping(value, mapping, depth + 1)
+        return
 
     if isinstance(raw_value, (list, tuple, set)):
-        mapping = _mapping_from_iterable(raw_value)
-        if mapping:
-            return mapping
+        mapping.update(_mapping_from_iterable(raw_value))
+        for item in raw_value:
+            _collect_room_mapping(item, mapping, depth + 1)
+        return
 
-    return {}
+
+def _is_mapping_candidate(raw_mapping: Mapping[Any, Any]) -> bool:
+    """Return True for dicts that look like room->segment mappings."""
+    metadata_keys = {
+        "id",
+        "name",
+        "room",
+        "room_name",
+        "segment",
+        "segment_id",
+        "segment_name",
+        "label",
+        "icon",
+        "date",
+        "index",
+        "custom_name",
+        "floor_id",
+        "entity_id",
+        "state",
+        "type",
+        "selected_map_id",
+        "selected_map_index",
+    }
+
+    if not any(_as_segment_id(value) is not None for value in raw_mapping.values()):
+        return False
+
+    for key in raw_mapping.keys():
+        if str(key).strip().casefold() in metadata_keys:
+            return False
+
+    return True
 
 
 def _mapping_from_dict(raw_mapping: Mapping[Any, Any]) -> dict[str, int]:
@@ -267,6 +327,8 @@ def _as_room_name(value: Any) -> str | None:
 
 
 def _as_segment_id(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
     try:
         segment_id = int(value)
     except (TypeError, ValueError):
