@@ -6,6 +6,8 @@ Home Assistant custom integration (`vacuum_room_scheduler`) that tracks room cle
 
 - Tracks last vacuumed and last mopped timestamps per room (persistent storage across restarts)
 - Uses room + segment mapping (e.g. Kitchen -> segment 16)
+- Exposes per-room timestamp sensors for last vacuumed and last mopped
+- Watches the vacuum state in the background so external cleaning runs also update the timestamps
 - Can auto-discover rooms from Home Assistant and filter to the same floor as the vacuum
 - Checks a presence `binary_sensor` before any vacuum start
 - Automatically cleans overdue room tasks (vacuum/mop) only when nobody is home
@@ -80,6 +82,8 @@ event_data:
 
 - Speichert pro Raum getrennte Zeitpunkte für letztes Saugen und letztes Wischen (persistent über Neustarts)
 - Nutzt Raum-zu-Segment-Zuordnung (z. B. Küche -> Segment 16)
+- Stellt pro Raum Zeitstempel-Sensoren für letztes Saugen und Wischen bereit
+- Überwacht den Staubsauger im Hintergrund, damit auch externe Läufe die Zeitstempel aktualisieren
 - Kann Räume automatisch aus Home Assistant erkennen und auf den gleichen Stock wie den Staubsauger filtern
 - Prüft vor jedem Start einen Anwesenheits-`binary_sensor`
 - Reinigt überfällige Aufgaben (Saugen/Wischen) nur, wenn niemand zu Hause ist

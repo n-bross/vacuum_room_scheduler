@@ -17,7 +17,7 @@ from homeassistant.const import (
     STATE_UNAVAILABLE,
     STATE_UNKNOWN,
 )
-from homeassistant.core import Event, HomeAssistant, ServiceCall, callback
+from homeassistant.core import Event, HomeAssistant, ServiceCall, State, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.event import async_track_point_in_time, async_track_time_interval
@@ -54,6 +54,7 @@ from .const import (
     REMINDER_MINUTES,
     SERVICE_HANDLE_RESPONSE,
     STORAGE_VERSION,
+    VACUUM_ACTIVITY_POLL_MINUTES,
 )
 from .room_discovery import (
     discover_floor_area_names,
@@ -113,19 +114,22 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     hass.data[DOMAIN][DATA_MANAGERS][entry.entry_id] = manager
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))
+    await hass.config_entries.async_forward_entry_setups(entry, ["sensor"])
 
     return True
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
+    unload_ok = await hass.config_entries.async_unload_platforms(entry, ["sensor"])
+
     manager: VacuumRoomSchedulerManager | None = hass.data[DOMAIN][DATA_MANAGERS].pop(
         entry.entry_id, None
     )
     if manager is not None:
         await manager.async_stop()
 
-    return True
+    return unload_ok
 
 
 async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
@@ -216,9 +220,13 @@ class VacuumRoomSchedulerManager:
         self._last_cleaned: dict[str, str] = {}
         self._last_prompted: dict[str, str] = {}
         self._scheduled: dict[str, str] = {}
+        self._state_listeners: list[Callable[[], None]] = []
 
         self._scheduled_unsubs: dict[str, list[Callable[[], None]]] = {}
         self._unsub_listeners: list[Callable[[], None]] = []
+        self._vacuum_active_room_modes: set[tuple[str, str]] = set()
+        self._vacuum_was_active: bool = False
+        self._vacuum_last_seen_signature: tuple[bool, tuple[int, ...], str | None] | None = None
 
     async def async_start(self) -> None:
         """Load state and start runtime listeners."""
@@ -251,6 +259,13 @@ class VacuumRoomSchedulerManager:
 
         self._unsub_listeners.append(
             self.hass.bus.async_listen(EVENT_STATE_CHANGED, self._async_state_changed_listener)
+        )
+        self._unsub_listeners.append(
+            async_track_time_interval(
+                self.hass,
+                self._async_poll_vacuum_activity,
+                timedelta(minutes=VACUUM_ACTIVITY_POLL_MINUTES),
+            )
         )
         self._unsub_listeners.append(
             self.hass.bus.async_listen(EVENT_RESPONSE, self._async_custom_response_listener)
@@ -429,6 +444,43 @@ class VacuumRoomSchedulerManager:
                 "scheduled_by_mode": self._scheduled,
             }
         )
+        self._notify_state_listeners()
+
+    def register_state_listener(self, callback_fn: Callable[[], None]) -> Callable[[], None]:
+        """Register a callback for sensor updates."""
+        self._state_listeners.append(callback_fn)
+
+        def _remove() -> None:
+            if callback_fn in self._state_listeners:
+                self._state_listeners.remove(callback_fn)
+
+        return _remove
+
+    def get_last_cleaned(self, room: str, mode: str) -> datetime | None:
+        """Return the last cleaned timestamp for a room/mode pair."""
+        return _parse_datetime(self._last_cleaned.get(_task_key(room, mode)))
+
+    def get_last_prompted(self, room: str, mode: str) -> datetime | None:
+        """Return the last prompted timestamp for a room/mode pair."""
+        return _parse_datetime(self._last_prompted.get(_task_key(room, mode)))
+
+    def get_scheduled(self, room: str, mode: str) -> datetime | None:
+        """Return the scheduled timestamp for a room/mode pair."""
+        return _parse_datetime(self._scheduled.get(_task_key(room, mode)))
+
+    def get_room_segment_id(self, room: str) -> int | None:
+        """Return configured segment id for a room."""
+        return self.rooms.get(room)
+
+    def get_room_area_id(self, room: str) -> str | None:
+        """Return configured area id for a room."""
+        return self._configured_room_area_ids.get(room)
+
+    @callback
+    def _notify_state_listeners(self) -> None:
+        """Notify attached entities that the manager state changed."""
+        for callback_fn in list(self._state_listeners):
+            callback_fn()
 
     async def _async_periodic_check(self, _now: datetime | None = None) -> None:
         """Periodically evaluate all room/mode tasks."""
@@ -661,13 +713,19 @@ class VacuumRoomSchedulerManager:
 
     @callback
     def _async_state_changed_listener(self, event: Event) -> None:
-        """Handle input_select changes used as quick response channel."""
+        """Handle relevant state changes for quick responses and vacuum activity."""
         entity_id = event.data.get("entity_id", "")
-        if not entity_id.startswith("input_select."):
+        new_state = event.data.get("new_state")
+        old_state = event.data.get("old_state")
+
+        if entity_id == self.vacuum_entity_id:
+            if isinstance(new_state, State):
+                self.hass.async_create_task(
+                    self._async_handle_vacuum_state_change(new_state, old_state)
+                )
             return
 
-        new_state = event.data.get("new_state")
-        if new_state is None:
+        if not entity_id.startswith("input_select.") or new_state is None:
             return
 
         response_text = str(new_state.state)
@@ -692,6 +750,75 @@ class VacuumRoomSchedulerManager:
         self.hass.async_create_task(
             self.async_handle_response(response=str(response), room=room, mode=mode)
         )
+
+    async def _async_poll_vacuum_activity(self, _now: datetime | None = None) -> None:
+        """Poll the vacuum state to catch runs that were missed by events."""
+        state = self.hass.states.get(self.vacuum_entity_id)
+        if state is None:
+            return
+        await self._async_handle_vacuum_state_change(state, None)
+
+    async def _async_handle_vacuum_state_change(
+        self, new_state: State, old_state: State | None
+    ) -> None:
+        """Track external vacuum runs and update room timestamps when they end."""
+        new_active = _is_vacuum_active_state(new_state)
+        old_active = _is_vacuum_active_state(old_state) if old_state is not None else self._vacuum_was_active
+
+        new_signature = _vacuum_activity_signature(new_state)
+        if (
+            self._vacuum_last_seen_signature == new_signature
+            and new_active == old_active
+            and old_state is None
+        ):
+            return
+
+        if new_active:
+            active_pairs = self._active_room_modes_from_state(new_state)
+            self._vacuum_active_room_modes = active_pairs
+            self._vacuum_was_active = True
+            self._vacuum_last_seen_signature = new_signature
+            return
+
+        if old_active and self._vacuum_active_room_modes:
+            updated = False
+            now = dt_util.now().isoformat()
+            for room, mode in self._vacuum_active_room_modes:
+                if room not in self.rooms:
+                    continue
+                self._last_cleaned[_task_key(room, mode)] = now
+                updated = True
+
+            self._vacuum_active_room_modes = set()
+            self._vacuum_was_active = False
+            self._vacuum_last_seen_signature = new_signature
+
+            if updated:
+                await self._async_save_state()
+            return
+
+        if old_active:
+            self._vacuum_active_room_modes = set()
+            self._vacuum_was_active = False
+            self._vacuum_last_seen_signature = new_signature
+
+    def _active_room_modes_from_state(self, state: State) -> set[tuple[str, str]]:
+        """Resolve active room/mode pairs from a vacuum state."""
+        segment_ids = _extract_active_segment_ids(state)
+        if not segment_ids:
+            return set()
+
+        modes = _extract_active_modes(state)
+        if not modes:
+            modes = {CLEAN_MODE_VACUUM}
+
+        active_rooms = {
+            room
+            for room, segment_id in self.rooms.items()
+            if segment_id in segment_ids
+        }
+
+        return {(room, mode) for room in active_rooms for mode in modes}
 
     def _set_scheduled_callbacks(self, room: str, mode: str, when: datetime) -> None:
         """Create reminder + start callbacks for one room/mode schedule."""
@@ -879,6 +1006,96 @@ def _room_is_on_vacuum_floor(
         return True
 
     return room_name in floor_room_names
+
+
+def _is_vacuum_active_state(state: State | None) -> bool:
+    """Return True if the vacuum is actively cleaning."""
+    if state is None:
+        return False
+
+    active_states = {
+        "cleaning",
+        "returning",
+        "moving",
+        "washing",
+        "drying",
+        "mapping",
+        "spot_cleaning",
+        "zone_cleaning",
+        "segment_cleaning",
+        "cruising",
+        "paused",
+    }
+    if str(state.state).casefold() in active_states:
+        return True
+
+    attrs = state.attributes
+    return any(
+        bool(attrs.get(key))
+        for key in (
+            "running",
+            "segment_cleaning",
+            "zone_cleaning",
+            "spot_cleaning",
+            "cruising",
+            "washing",
+            "drying",
+            "mapping",
+            "paused",
+        )
+    )
+
+
+def _extract_active_segment_ids(state: State) -> set[int]:
+    """Extract active segment ids from a vacuum state."""
+    attrs = state.attributes
+    segment_ids: set[int] = set()
+
+    raw_segments = attrs.get("active_segments")
+    if isinstance(raw_segments, list):
+        for value in raw_segments:
+            try:
+                segment_id = int(value)
+            except (TypeError, ValueError):
+                continue
+            if segment_id > 0:
+                segment_ids.add(segment_id)
+
+    if not segment_ids:
+        raw_current = attrs.get("current_segment")
+        try:
+            segment_id = int(raw_current)
+        except (TypeError, ValueError):
+            segment_id = None
+        if segment_id and segment_id > 0:
+            segment_ids.add(segment_id)
+
+    return segment_ids
+
+
+def _extract_active_modes(state: State) -> set[str]:
+    """Derive active cleaning modes from a vacuum state."""
+    attrs = state.attributes
+    mode_text = str(attrs.get("cleaning_mode", "")).casefold()
+    if "sweeping and mopping" in mode_text:
+        return {CLEAN_MODE_VACUUM, CLEAN_MODE_MOP}
+    if "mopping" in mode_text:
+        return {CLEAN_MODE_MOP}
+    if "sweeping" in mode_text:
+        return {CLEAN_MODE_VACUUM}
+
+    mopping_type = str(attrs.get("mopping_type", "")).casefold()
+    if mopping_type:
+        return {CLEAN_MODE_MOP}
+
+    return set()
+
+
+def _vacuum_activity_signature(state: State) -> tuple[bool, tuple[int, ...], str | None]:
+    """Build a compact signature for vacuum activity polling."""
+    segment_ids = tuple(sorted(_extract_active_segment_ids(state)))
+    mode_text = str(state.attributes.get("cleaning_mode", "")).strip() or None
+    return _is_vacuum_active_state(state), segment_ids, mode_text
 
 
 def _task_key(room: str, mode: str) -> str:
