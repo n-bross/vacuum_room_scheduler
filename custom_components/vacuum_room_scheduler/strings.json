@@ -12,13 +12,15 @@
     "step": {
       "user": {
         "title": "Base settings",
-        "description": "Configure entities, TTS and preferred cleaning window.",
+        "description": "Configure entities, cleaning intervals, TTS and the preferred cleaning window.",
         "data": {
           "vacuum_entity_id": "Vacuum entity",
           "presence_entity_id": "Presence sensor",
           "tts_service": "TTS service",
           "media_player_entity_id": "Media player entity",
-          "max_days": "Max days without cleaning",
+          "vacuum_interval_days": "Vacuum interval in days",
+          "mop_interval_days": "Mop interval in days",
+          "prompt_cooldown_hours": "Prompt cooldown in hours",
           "window_start": "Preferred window start",
           "window_end": "Preferred window end"
         }
@@ -58,13 +60,15 @@
     "step": {
       "user": {
         "title": "Edit settings",
-        "description": "Update entities, thresholds, and cleaning window.",
+        "description": "Update entities, cleaning intervals, prompt cooldown, and cleaning window.",
         "data": {
           "vacuum_entity_id": "Vacuum entity",
           "presence_entity_id": "Presence sensor",
           "tts_service": "TTS service",
           "media_player_entity_id": "Media player entity",
-          "max_days": "Max days without cleaning",
+          "vacuum_interval_days": "Vacuum interval in days",
+          "mop_interval_days": "Mop interval in days",
+          "prompt_cooldown_hours": "Prompt cooldown in hours",
           "window_start": "Preferred window start",
           "window_end": "Preferred window end"
         }

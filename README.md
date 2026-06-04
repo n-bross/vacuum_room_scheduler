@@ -7,7 +7,9 @@ Home Assistant custom integration (`vacuum_room_scheduler`) that tracks room cle
 - Tracks last vacuumed and last mopped timestamps per room (persistent storage across restarts)
 - Uses room + segment mapping (e.g. Kitchen -> segment 16)
 - Exposes per-room timestamp sensors for last vacuumed and last mopped
+- Exposes per-room next-due sensors for vacuum and mop
 - Watches the vacuum state in the background so external cleaning runs also update the timestamps
+- Lets you configure separate vacuum and mop intervals plus prompt cooldown in the UI
 - Can auto-discover rooms from Home Assistant and filter to the same floor as the vacuum
 - Checks a presence `binary_sensor` before any vacuum start
 - Automatically cleans overdue room tasks (vacuum/mop) only when nobody is home
@@ -37,7 +39,9 @@ Home Assistant custom integration (`vacuum_room_scheduler`) that tracks room cle
    - Presence sensor (domain `binary_sensor`)
    - TTS service (for example `tts.google_translate_say`)
    - Media player entity (domain `media_player`)
-   - Maximum days without cleaning per task type (vacuum/mop, default `7`)
+   - Vacuum interval in days
+   - Mop interval in days
+   - Prompt cooldown in hours
    - Preferred window start/end (for example `09:00` to `17:00`)
 4. Add rooms dynamically in the flow:
    - `Add room` -> room name + segment ID
@@ -83,7 +87,9 @@ event_data:
 - Speichert pro Raum getrennte Zeitpunkte für letztes Saugen und letztes Wischen (persistent über Neustarts)
 - Nutzt Raum-zu-Segment-Zuordnung (z. B. Küche -> Segment 16)
 - Stellt pro Raum Zeitstempel-Sensoren für letztes Saugen und Wischen bereit
+- Stellt pro Raum Sensoren für die nächste geplante Reinigung für Saugen und Wischen bereit
 - Überwacht den Staubsauger im Hintergrund, damit auch externe Läufe die Zeitstempel aktualisieren
+- Erlaubt getrennte Intervalle für Saugen und Wischen sowie die Wartezeit bis zur nächsten Nachfrage direkt in der UI
 - Kann Räume automatisch aus Home Assistant erkennen und auf den gleichen Stock wie den Staubsauger filtern
 - Prüft vor jedem Start einen Anwesenheits-`binary_sensor`
 - Reinigt überfällige Aufgaben (Saugen/Wischen) nur, wenn niemand zu Hause ist
@@ -113,7 +119,9 @@ event_data:
    - Anwesenheitssensor (Domain `binary_sensor`)
    - TTS-Service (z. B. `tts.google_translate_say`)
    - Media-Player-Entität (Domain `media_player`)
-   - Maximale Tage ohne Reinigung pro Aufgabentyp (Saugen/Wischen, Standard `7`)
+   - Saugen-Intervall in Tagen
+   - Wischen-Intervall in Tagen
+   - Wartezeit bis zur nächsten Nachfrage in Stunden
    - Bevorzugtes Zeitfenster Start/Ende (z. B. `09:00` bis `17:00`)
 4. Räume dynamisch im Assistenten verwalten:
    - `Raum hinzufügen` -> Raumname + Segment-ID

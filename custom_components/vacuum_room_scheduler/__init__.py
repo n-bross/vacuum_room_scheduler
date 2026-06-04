@@ -32,25 +32,28 @@ from .const import (
     ATTR_RESPONSE,
     ATTR_ROOM,
     CHECK_INTERVAL_MINUTES,
-    CONF_MAX_DAYS,
     CONF_AREA_ID,
     CONF_MEDIA_PLAYER_ENTITY_ID,
+    CONF_MOP_INTERVAL_DAYS,
+    CONF_PROMPT_COOLDOWN_HOURS,
     CONF_PRESENCE_ENTITY_ID,
     CONF_ROOM_NAME,
     CONF_ROOMS,
     CONF_SEGMENT_ID,
     CONF_TTS_SERVICE,
     CONF_VACUUM_ENTITY_ID,
+    CONF_VACUUM_INTERVAL_DAYS,
     CONF_WINDOW_END,
     CONF_WINDOW_START,
     DATA_MANAGERS,
     DATA_SERVICES_REGISTERED,
-    DEFAULT_MAX_DAYS,
+    DEFAULT_MOP_INTERVAL_DAYS,
+    DEFAULT_PROMPT_COOLDOWN_HOURS,
+    DEFAULT_VACUUM_INTERVAL_DAYS,
     DEFAULT_WINDOW_END,
     DEFAULT_WINDOW_START,
     DOMAIN,
     EVENT_RESPONSE,
-    PROMPT_COOLDOWN_HOURS,
     REMINDER_MINUTES,
     SERVICE_HANDLE_RESPONSE,
     STORAGE_VERSION,
@@ -194,7 +197,23 @@ class VacuumRoomSchedulerManager:
         self.presence_entity_id: str = self.config[CONF_PRESENCE_ENTITY_ID]
         self.tts_service: str = self.config[CONF_TTS_SERVICE]
         self.media_player_entity_id: str = self.config[CONF_MEDIA_PLAYER_ENTITY_ID]
-        self.max_days: int = int(self.config.get(CONF_MAX_DAYS, DEFAULT_MAX_DAYS))
+        self.vacuum_interval_days: int = int(
+            self.config.get(
+                CONF_VACUUM_INTERVAL_DAYS,
+                DEFAULT_VACUUM_INTERVAL_DAYS,
+            )
+        )
+        self.mop_interval_days: int = int(
+            self.config.get(
+                CONF_MOP_INTERVAL_DAYS,
+                DEFAULT_MOP_INTERVAL_DAYS,
+            )
+        )
+        self.prompt_cooldown_hours: int = int(
+            self.config.get(
+                CONF_PROMPT_COOLDOWN_HOURS, DEFAULT_PROMPT_COOLDOWN_HOURS
+            )
+        )
 
         self.window_start: time = _parse_time(
             self.config.get(CONF_WINDOW_START), DEFAULT_WINDOW_START
@@ -476,6 +495,24 @@ class VacuumRoomSchedulerManager:
         """Return configured area id for a room."""
         return self._configured_room_area_ids.get(room)
 
+    def get_interval_days(self, mode: str) -> int:
+        """Return the configured interval in days for a room/mode pair."""
+        return self._clean_interval_days(mode)
+
+    def get_next_planned(self, room: str, mode: str) -> datetime | None:
+        """Return the next planned cleaning timestamp for a room/mode pair."""
+        scheduled = self.get_scheduled(room, mode)
+        if scheduled is not None:
+            return scheduled
+
+        last_cleaned = self.get_last_cleaned(room, mode)
+        if last_cleaned is None:
+            return None
+
+        return dt_util.as_utc(
+            last_cleaned + timedelta(days=self._clean_interval_days(mode))
+        )
+
     @callback
     def _notify_state_listeners(self) -> None:
         """Notify attached entities that the manager state changed."""
@@ -494,7 +531,7 @@ class VacuumRoomSchedulerManager:
                     continue
 
                 overdue_days = self._days_since_clean(room, mode, now)
-                if overdue_days < self.max_days:
+                if overdue_days < self._clean_interval_days(mode):
                     continue
 
                 if someone_home:
@@ -526,7 +563,7 @@ class VacuumRoomSchedulerManager:
 
         if (
             last_prompt is not None
-            and now - last_prompt < timedelta(hours=PROMPT_COOLDOWN_HOURS)
+            and now - last_prompt < timedelta(hours=self.prompt_cooldown_hours)
         ):
             return
 
@@ -944,9 +981,15 @@ class VacuumRoomSchedulerManager:
         task_key = _task_key(room, mode)
         last_cleaned = _parse_datetime(self._last_cleaned.get(task_key))
         if last_cleaned is None:
-            return self.max_days
+            return self._clean_interval_days(mode)
 
         return max(0, (now - last_cleaned).days)
+
+    def _clean_interval_days(self, mode: str) -> int:
+        """Return the configured interval for a cleaning mode."""
+        if mode == CLEAN_MODE_MOP:
+            return max(1, self.mop_interval_days)
+        return max(1, self.vacuum_interval_days)
 
 
 def _normalize_rooms(raw_rooms: Any) -> dict[str, int]:

@@ -12,13 +12,15 @@
     "step": {
       "user": {
         "title": "Grundeinstellungen",
-        "description": "Entitäten, TTS und bevorzugtes Zeitfenster konfigurieren.",
+        "description": "Entitäten, Reinigungsintervalle, TTS und bevorzugtes Zeitfenster konfigurieren.",
         "data": {
           "vacuum_entity_id": "Staubsauger-Entität",
           "presence_entity_id": "Anwesenheitssensor",
           "tts_service": "TTS-Service",
           "media_player_entity_id": "Media-Player-Entität",
-          "max_days": "Maximale Tage ohne Reinigung",
+          "vacuum_interval_days": "Saugen-Intervall in Tagen",
+          "mop_interval_days": "Wischen-Intervall in Tagen",
+          "prompt_cooldown_hours": "Wartezeit bis zur nächsten Nachfrage in Stunden",
           "window_start": "Start des bevorzugten Zeitfensters",
           "window_end": "Ende des bevorzugten Zeitfensters"
         }
@@ -58,13 +60,15 @@
     "step": {
       "user": {
         "title": "Einstellungen bearbeiten",
-        "description": "Entitäten, Schwellenwerte und Zeitfenster aktualisieren.",
+        "description": "Entitäten, Reinigungsintervalle, Wartezeit bis zur Nachfrage und Zeitfenster aktualisieren.",
         "data": {
           "vacuum_entity_id": "Staubsauger-Entität",
           "presence_entity_id": "Anwesenheitssensor",
           "tts_service": "TTS-Service",
           "media_player_entity_id": "Media-Player-Entität",
-          "max_days": "Maximale Tage ohne Reinigung",
+          "vacuum_interval_days": "Saugen-Intervall in Tagen",
+          "mop_interval_days": "Wischen-Intervall in Tagen",
+          "prompt_cooldown_hours": "Wartezeit bis zur nächsten Nachfrage in Stunden",
           "window_start": "Start des bevorzugten Zeitfensters",
           "window_end": "Ende des bevorzugten Zeitfensters"
         }

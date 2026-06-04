@@ -16,15 +16,21 @@ from .const import (
     CONF_AREA_ID,
     CONF_MAX_DAYS,
     CONF_MEDIA_PLAYER_ENTITY_ID,
+    CONF_MOP_INTERVAL_DAYS,
+    CONF_PROMPT_COOLDOWN_HOURS,
     CONF_PRESENCE_ENTITY_ID,
     CONF_ROOM_NAME,
     CONF_ROOMS,
     CONF_SEGMENT_ID,
     CONF_TTS_SERVICE,
     CONF_VACUUM_ENTITY_ID,
+    CONF_VACUUM_INTERVAL_DAYS,
     CONF_WINDOW_END,
     CONF_WINDOW_START,
     DEFAULT_MAX_DAYS,
+    DEFAULT_MOP_INTERVAL_DAYS,
+    DEFAULT_PROMPT_COOLDOWN_HOURS,
+    DEFAULT_VACUUM_INTERVAL_DAYS,
     DEFAULT_WINDOW_END,
     DEFAULT_WINDOW_START,
     DOMAIN,
@@ -345,6 +351,23 @@ class VacuumRoomSchedulerOptionsFlow(config_entries.OptionsFlow):
             CONF_TTS_SERVICE: merged_data.get(CONF_TTS_SERVICE, ""),
             CONF_MEDIA_PLAYER_ENTITY_ID: merged_data.get(CONF_MEDIA_PLAYER_ENTITY_ID, ""),
             CONF_MAX_DAYS: int(merged_data.get(CONF_MAX_DAYS, DEFAULT_MAX_DAYS)),
+            CONF_VACUUM_INTERVAL_DAYS: int(
+                merged_data.get(
+                    CONF_VACUUM_INTERVAL_DAYS,
+                    merged_data.get(CONF_MAX_DAYS, DEFAULT_VACUUM_INTERVAL_DAYS),
+                )
+            ),
+            CONF_MOP_INTERVAL_DAYS: int(
+                merged_data.get(
+                    CONF_MOP_INTERVAL_DAYS,
+                    merged_data.get(CONF_MAX_DAYS, DEFAULT_MOP_INTERVAL_DAYS),
+                )
+            ),
+            CONF_PROMPT_COOLDOWN_HOURS: int(
+                merged_data.get(
+                    CONF_PROMPT_COOLDOWN_HOURS, DEFAULT_PROMPT_COOLDOWN_HOURS
+                )
+            ),
             CONF_WINDOW_START: merged_data.get(CONF_WINDOW_START, DEFAULT_WINDOW_START),
             CONF_WINDOW_END: merged_data.get(CONF_WINDOW_END, DEFAULT_WINDOW_END),
         }
@@ -636,12 +659,48 @@ def _build_base_schema(defaults: dict[str, Any]) -> vol.Schema:
                 selector.EntitySelectorConfig(domain="media_player")
             ),
             vol.Required(
-                CONF_MAX_DAYS,
-                default=int(defaults.get(CONF_MAX_DAYS, DEFAULT_MAX_DAYS)),
+                CONF_VACUUM_INTERVAL_DAYS,
+                default=int(
+                    defaults.get(
+                        CONF_VACUUM_INTERVAL_DAYS,
+                        defaults.get(CONF_MAX_DAYS, DEFAULT_VACUUM_INTERVAL_DAYS),
+                    )
+                ),
             ): selector.NumberSelector(
                 selector.NumberSelectorConfig(
                     min=1,
                     max=365,
+                    step=1,
+                    mode=selector.NumberSelectorMode.BOX,
+                )
+            ),
+            vol.Required(
+                CONF_MOP_INTERVAL_DAYS,
+                default=int(
+                    defaults.get(
+                        CONF_MOP_INTERVAL_DAYS,
+                        defaults.get(CONF_MAX_DAYS, DEFAULT_MOP_INTERVAL_DAYS),
+                    )
+                ),
+            ): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=1,
+                    max=365,
+                    step=1,
+                    mode=selector.NumberSelectorMode.BOX,
+                )
+            ),
+            vol.Required(
+                CONF_PROMPT_COOLDOWN_HOURS,
+                default=int(
+                    defaults.get(
+                        CONF_PROMPT_COOLDOWN_HOURS, DEFAULT_PROMPT_COOLDOWN_HOURS
+                    )
+                ),
+            ): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=1,
+                    max=168,
                     step=1,
                     mode=selector.NumberSelectorMode.BOX,
                 )
